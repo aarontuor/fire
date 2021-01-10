@@ -20,6 +20,7 @@ from tf_ops import dnn
 from graph_training_utils import ModelRunner, get_feed_dict
 
 import argparse
+from sklearn.cross_validation import StratifiedKFold
 from tf_ops import batch_normalize
 from util import Batcher
 import sklearn
@@ -245,7 +246,7 @@ np.save(args.folder + 'test_predictions.npy',
                    np.concatenate(test_predictions)[:, 1]]).transpose())
 print(scores)
 with open(args.logfile, 'a') as logfile:
-    logfile.write('%.5f,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n' % (args.learnrate,
+    logfile.write('%.5f,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n' % (args.learnrate,
                                                                                             args.mb,
                                                                                             args.max_epochs,
                                                                                             args.kp,
@@ -260,15 +261,10 @@ with open(args.logfile, 'a') as logfile:
                                                                                             final_fscore,
                                                                                             final_auc,
                                                                                             final_accuracy,
-                                                                                            test_precision,
-                                                                                            test_recall,
-                                                                                            test_fscore,
-                                                                                            test_auc,
-                                                                                            test_accuracy,
+                                                                                            test_prec
                                                                                             np.mean(scores),
                                                                                             np.std(scores) * 2))
-print(np.mean(scores), np.std(scores)*2)
-
+print np.mean(scores), np.std(scores)*2
 
 
 

@@ -19,7 +19,7 @@ for partition in ['d4', 'd3', 'd2', 'd1']:
         ds = random.randint(20, 200)
         kp = random.uniform(0.5, 1.0)
         rs = random.randint(5, 500)
-        os.system('python ../../classify_dnn.py ' +
+        os.system('python ../../gclassify_dnn.py ' +
                   '-learnrate %s ' % lr +
                   '-mb %s ' % mb +
                   '-max_epochs %s ' % me +
