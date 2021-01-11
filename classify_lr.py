@@ -15,15 +15,20 @@ Global model performance and parameters are saved as a line in the file:
 """
 import tensorflow as tf
 import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.cross_validation import StratifiedKFold
+from sklearn.decomposition import PCA
+import sklearn
+
 import sys
+import os
+import argparse
+
 from tf_ops import dnn, ident
 from graph_training_utils import ModelRunner
-from sklearn.preprocessing import StandardScaler
-import argparse
-from sklearn.decomposition import PCA
 from util import Batcher
-import sklearn
-import os
+
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-learnrate', type=float, default=0.001,
@@ -56,8 +61,6 @@ if not args.folder.endswith('/'):
     args.folder += '/'
 os.system('mkdir ' + args.folder)
 os.system('mkdir ' + args.folder + 'models/')
-tf.set_random_seed(args.random_seed)
-np.random.seed(args.random_seed)
 
 
 def get_scores(labels, pred):
@@ -68,11 +71,10 @@ def get_scores(labels, pred):
     accuracy = sklearn.metrics.accuracy_score(labels, plabels)
     return precision, recall, fscore, auc, accuracy
 
-with open('/home/tuor369/gitland/fiery/data/clean_jan_field_data.csv', 'r') as h:
+with open('clean_jan_field_data.csv', 'r') as h:
     header = h.readline().strip().split(',')
 
-all_data = np.loadtxt('/home/tuor369/gitland/fiery/data/clean_jan_field_data.csv', skiprows=1, delimiter=',')
-np.random.shuffle(all_data)
+all_data = np.loadtxt('clean_jan_field_data.csv', skiprows=1, delimiter=',')
 
 ecoreg = all_data[:, 5]
 cov_type = all_data[:, 4]
@@ -99,8 +101,8 @@ full_y, test_y = full_y[train], full_y[test]
 full_x, test_x = full_x[train], full_x[test]
 full_label, test_label = full_label[train], full_label[test]
 full_ids, test_ids = full_ids[train], full_ids[test]
-test_data = all_data[test]
-
+test_data, all_data = all_data[test], all_data[train]
+split_labels = all_data[:,5] 
 
 # Tensorflow graph
 x = tf.placeholder(tf.float32, [None, full_x.shape[1]])
@@ -133,10 +135,11 @@ model = ModelRunner(ce + l2_weight_loss + l2_bias_loss, ph_dict,
                     decay_rate=args.decay_rate,
                     decay_steps=args.decay_steps)
 
-
 # set up training
 scores, predictions, true_classes, point_ids = [], [], [], []
-folds = [(np.load('idxs/train_%s.npy' % i), np.load('idxs/test_%s.npy' %i)) for i in range(5)]
+folds = StratifiedKFold(split_labels, n_folds=5)
+
+# folds = [(np.load('idxs/train_%s.npy' % i), np.load('idxs/test_%s.npy' %i)) for i in range(5)]
 for i, (train, test) in enumerate(folds):
     performance_file = open(args.folder + str(i) + '_performance.csv', 'w')
     performance_file.write('train_loss train_precision, train_recall, train_fscore, train_auc, train_accuracy '
@@ -149,7 +152,6 @@ for i, (train, test) in enumerate(folds):
     current_loss = sys.float_info.max
     test_datadict = {'x': (full_x[test] - mean)/std,
                      'y': full_label[test]}
-    # test_datadict['x'] = standard.transform(test_datadict['x'])
     full_train_datadict = {'x': (full_x[train] - mean)/std,
                            'y': full_label[train]}
     test_datadict.update({'soil': all_data[:, 2][test].astype(int),
@@ -203,12 +205,6 @@ for i, (train, test) in enumerate(folds):
                                                                                      test_current_loss,
                                                                                      np_acc,
                                                                                      np_test_acc))
-            # if np_test_acc > best_acc:
-            #     os.system('rm ' + args.folder + 'models/*%sfold*' % i)
-            #     thebestfile = model.saver.save(model.sess,
-            #                      args.folder + 'models/%s_%sfold_%s' % (current_epoch, i, np_test_acc))
-            #     best_predictions = test_np_probs
-            # best_acc = max(np_test_acc, best_acc)
 
             if np_test_acc > best_acc:
                 os.system('rm ' + args.folder + 'models/%sfold*' % i)
@@ -235,7 +231,6 @@ test_predictions, test_true_classes, test_point_ids = [], [], []
 for fold, (train, test) in enumerate(folds):
     mean, std = np.mean(full_x[train], axis=0), np.std(full_x[train], axis=0)
     test_datadict = {'x': (test_x - mean) / std, 'y': test_label}
-    # test_datadict['x'] = standard.transform(test_datadict['x'])
     test_datadict.update({'soil': test_data[:, 2].astype(int),
                           'cover': test_data[:, 4].astype(int),
                           'eco': test_data[:, 5].astype(int)})
@@ -247,6 +242,8 @@ for fold, (train, test) in enumerate(folds):
     test_true_classes.append(test_datadict['y'])
     test_point_ids.append(test_data[:, 0])
 
+test_precision, test_recall, test_fscore, test_auc, test_accuracy = get_scores(np.concatenate(test_true_classes),
+                                                                                    np.concatenate(test_predictions))
 np.save(args.folder + 'test_predictions.npy',
         np.vstack([np.concatenate(test_point_ids),
                    np.concatenate(test_true_classes),
@@ -255,7 +252,7 @@ np.save(args.folder + 'test_predictions.npy',
 
 print(scores)
 with open(args.logfile, 'a') as logfile:
-    logfile.write('%.5f,%s,%s,%s,%s,%s,%s,%s,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n' % (args.learnrate,
+    logfile.write('%.5f,%s,%s,%s,%s,%s,%s,%s,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n' % (args.learnrate,
                                                                                    args.reduce,
                                                                                     args.mb,
                                                                                     args.max_epochs,
@@ -268,135 +265,12 @@ with open(args.logfile, 'a') as logfile:
                                                                                     final_fscore,
                                                                                     final_auc,
                                                                                     final_accuracy,
+                                                                                      test_precision,
+                                                                                      test_recall,
+                                                                                      test_fscore,
+                                                                                      test_auc,
+                                                                                      test_accuracy,
                                                                                     np.mean(scores),
                                                                                     np.std(scores) * 2))
 print np.mean(scores), np.std(scores)*2
 
-
-# # set up training
-# scores, predictions, true_classes, point_ids = [], [], [], []
-# folds = [(np.load('train_%s.npy' % i), np.load('test_%s.npy' %i)) for i in range(5)]
-# for i, (train, test) in enumerate(folds):
-#     performance_file = open(args.folder + str(i) + '_performance.csv', 'w')
-#     performance_file.write('train_loss train_precision, train_recall, train_fscore, train_auc, train_accuracy '
-#                            'test_loss test_precision, test_recall, test_fscore, test_auc, test_accuracy\n')
-#
-#     mean, std = np.mean(full_x[train], axis=0), np.std(full_x[train], axis=0)
-#     data = Batcher(all_data[train], full_label[train])
-#     batch_x, batch_y = data.next_batch(args.mb)
-#     batch_num = 0
-#     current_loss = sys.float_info.max
-#     test_datadict = {'x': (full_x[test] - mean)/std,
-#                      'y': full_label[test]}
-#     full_train_datadict = {'x': (full_x[train] - mean)/std,
-#                            'y': full_label[train]}
-#     test_datadict.update({'soil': all_data[:, 2][test].astype(int),
-#                           'cover': all_data[:, 4][test].astype(int),
-#                           'eco': all_data[:, 5][test].astype(int)})
-#     full_train_datadict.update({'soil': all_data[:, 2][train].astype(int),
-#                                 'cover': all_data[:, 4][train].astype(int),
-#                                 'eco': all_data[:, 5][train].astype(int)})
-#     current_epoch = 0
-#     test_eval_tensors = [ce, probs, accuracy]
-#     best_acc = 0.0
-#     while current_epoch < args.max_epochs:
-#         train_datadict = {'x': batch_x[:, partitions[args.partition]], 'y': batch_y}
-#         train_datadict['x'] = (train_datadict['x'] - mean)/std
-#         train_datadict.update({'soil': batch_x[:, 2].astype(int),
-#                                'cover': batch_x[:, 4].astype(int),
-#                                'eco': batch_x[:, 5].astype(int)})
-#         model.train_step(train_datadict, [], update=True)
-#         batch_x, batch_y = data.next_batch(args.mb)
-#         if data.epoch > current_epoch:
-#             current_epoch = data.epoch
-#             _, current_loss, np_probs, np_acc = model.train_step(full_train_datadict,
-#                                                                  test_eval_tensors,
-#                                                                  update=False)
-#             _, test_current_loss, test_np_probs, np_test_acc = model.train_step(test_datadict,
-#                                                                                 test_eval_tensors,
-#                                                                                 update=False)
-#             test_precision, test_recall, test_fscore, test_auc, test_accuracy = get_scores(test_datadict['y'],
-#                                                                                            test_np_probs)
-#             train_precision, train_recall, train_fscore, train_auc, train_accuracy = get_scores(full_train_datadict['y'],
-#                                                                                                 np_probs)
-#             performance_file.write('%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n' % (current_loss,
-#                                                                                                       train_precision,
-#                                                                                                       train_recall,
-#                                                                                                       train_fscore,
-#                                                                                                       train_auc,
-#                                                                                                       train_accuracy,
-#                                                                                                       test_current_loss,
-#                                                                                                       test_precision,
-#                                                                                                       test_recall,
-#                                                                                                       test_fscore,
-#                                                                                                       test_auc,
-#                                                                                                       test_accuracy))
-#
-#             assert np.isclose(test_accuracy, np_test_acc, 0.00001, 0.00001), '%s %s' % (test_accuracy,
-#                                                                                         np_test_acc)
-#             print('epoch: %s\tloss: %.5f\ttloss: %.5f acc: %.5f \ttest_acc: %.5f' % (data.epoch,
-#                                                                                      current_loss,
-#                                                                                      test_current_loss,
-#                                                                                      np_acc,
-#                                                                                      np_test_acc))
-#             if np_test_acc > best_acc:
-#                 os.system('rm ' + args.folder + 'models/%sfold*' % i)
-#                 thebestfile = model.saver.save(model.sess,
-#                                  args.folder + 'models/%sfold' % (i))
-#                 best_predictions = test_np_probs
-#             best_acc = max(np_test_acc, best_acc)
-#     performance_file.close()
-#     predictions.append(best_predictions)
-#     true_classes.append(test_datadict['y'])
-#     point_ids.append(all_data[:, 0][test])
-#     scores.append(best_acc)
-#     model.sess.run(model.init)  # re-initialize all weights to random values
-#
-# final_precision, final_recall, final_fscore, final_auc, final_accuracy = get_scores(np.concatenate(true_classes),
-#                                                                                     np.concatenate(predictions))
-# np.save(args.folder + 'predictions.npy',
-#         np.vstack([np.concatenate(point_ids),
-#                    np.concatenate(true_classes),
-#                    np.concatenate(predictions)[:, 0],
-#                    np.concatenate(predictions)[:, 1]]).transpose())
-#
-# test_predictions, test_true_classes, test_point_ids = [], [], []
-# for fold, (train, test) in enumerate(folds):
-#     mean, std = np.mean(full_x[train], axis=0), np.std(full_x[train], axis=0)
-#     test_datadict = {'x': (test_x - mean) / std, 'y': test_label}
-#     test_datadict.update({'soil': test_data[:, 2].astype(int),
-#                           'cover': test_data[:, 4].astype(int),
-#                           'eco': test_data[:, 5].astype(int)})
-#     model.saver.restore(model.sess, args.folder + 'models/%sfold' % fold)
-#     _, test_current_loss, test_np_probs, np_test_acc = model.train_step(test_datadict,
-#                                                                         test_eval_tensors,
-#                                                                         update=False)
-#     test_predictions.append(test_np_probs)
-#     test_true_classes.append(test_datadict['y'])
-#     test_point_ids.append(test_data[:, 0])
-#
-# np.save(args.folder + 'test_predictions.npy',
-#         np.vstack([np.concatenate(test_point_ids),
-#                    np.concatenate(test_true_classes),
-#                    np.concatenate(test_predictions)[:, 0],
-#                    np.concatenate(test_predictions)[:, 1]]).transpose())
-# print(scores)
-# with open(args.logfile, 'a') as logfile:
-#     logfile.write('%.5f,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n' % (args.learnrate,
-#                                                                                             args.mb,
-#                                                                                             args.max_epochs,
-#                                                                                             args.kp,
-#                                                                                             args.random_seed,
-#                                                                                             args.layers[0],
-#                                                                                             args.layers[1],
-#                                                                                             args.layers[2],
-#                                                                                             args.decay_rate,
-#                                                                                             args.decay_steps,
-#                                                                                             final_precision,
-#                                                                                             final_recall,
-#                                                                                             final_fscore,
-#                                                                                             final_auc,
-#                                                                                             final_accuracy,
-#                                                                                             np.mean(scores),
-#                                                                                             np.std(scores) * 2))
-# print np.mean(scores), np.std(scores)*2

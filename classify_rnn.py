@@ -1,16 +1,17 @@
+import sys
+import argparse
+import os
+
 import tensorflow as tf
 import numpy as np
-import sys
-from tf_ops import dnn
-from graph_training_utils import ModelRunner
-import argparse
 from sklearn.cross_validation import StratifiedKFold
-from tf_ops import batch_normalize
-from util import Batcher
 import sklearn
-import os
-tf.set_random_seed(5)
-np.random.seed(5)
+
+from tf_ops import dnn, batch_normalize
+from graph_training_utils import ModelRunner
+from util import Batcher
+
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-learnrate', type=float, default=0.0001,
@@ -74,7 +75,6 @@ with open('clean_jan_field_data.csv', 'r') as h:
     header = h.readline().strip().split(',')
 
 all_data = np.loadtxt('clean_jan_field_data.csv', skiprows=1, delimiter=',')
-np.random.shuffle(all_data)
 
 ecoreg = all_data[:, 5]
 cov_type = all_data[:, 4]
@@ -97,7 +97,7 @@ full_x, test_x = full_x[train], full_x[test]
 full_label, test_label = full_label[train], full_label[test]
 full_ids, test_ids = full_ids[train], full_ids[test]
 split_labels = split_labels[train]
-test_data = all_data[test]
+test_data, all_data = all_data[test], all_data[train]
 
 # Tensorflow graph
 x = tf.placeholder(tf.float32, [None, full_x.shape[1]])
@@ -151,7 +151,8 @@ model = ModelRunner(ce, ph_dict, learnrate=args.learnrate, debug=args.debug,
 
 #set up training
 scores, predictions, true_classes, point_ids = [], [], [], []
-folds = [(np.load('idxs/train_%s.npy' % i), np.load('idxs/test_%s.npy' %i)) for i in range(5)]
+folds = StratifiedKFold(split_labels, n_folds=5)
+# folds = [(np.load('idxs/train_%s.npy' % i), np.load('idxs/test_%s.npy' %i)) for i in range(5)]
 for i, (train, test) in enumerate(folds):
 
 
@@ -290,6 +291,8 @@ for fold, (train, test) in enumerate(folds):
     test_true_classes.append(test_datadict['y'])
     test_point_ids.append(test_data[:, 0])
 
+test_precision, test_recall, test_fscore, test_auc, test_accuracy = get_scores(np.concatenate(test_true_classes),
+                                                                               np.concatenate(test_predictions))
 np.save(args.folder + 'test_predictions.npy',
         np.vstack([np.concatenate(test_point_ids),
                    np.concatenate(test_true_classes),
@@ -297,7 +300,7 @@ np.save(args.folder + 'test_predictions.npy',
                    np.concatenate(test_predictions)[:, 1]]).transpose())
 print(scores)
 with open(args.logfile, 'a') as logfile:
-    logfile.write('%.5f,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n' % (args.learnrate,
+    logfile.write('%.5f,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n' % (args.learnrate,
                                                                                             args.mb,
                                                                                             args.max_epochs,
                                                                                             args.kp,
@@ -312,6 +315,11 @@ with open(args.logfile, 'a') as logfile:
                                                                                             final_fscore,
                                                                                             final_auc,
                                                                                             final_accuracy,
+                                                                                            test_precision,
+                                                                                            test_recall,
+                                                                                            test_fscore,
+                                                                                            test_auc,
+                                                                                            test_accuracy,
                                                                                             np.mean(scores),
                                                                                             np.std(scores) * 2))
 print np.mean(scores), np.std(scores)*2

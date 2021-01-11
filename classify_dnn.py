@@ -13,18 +13,18 @@ Global model performance and parameters are saved as a line in the file:
     args.logfile
 
 """
+import sys
+import argparse
+import os
+
 import tensorflow as tf
 import numpy as np
-import sys
-from tf_ops import dnn
-from graph_training_utils import ModelRunner, get_feed_dict
-
-import argparse
-from sklearn.cross_validation import StratifiedKFold
-from tf_ops import batch_normalize
-from util import Batcher
 import sklearn
-import os
+from sklearn.cross_validation import StratifiedKFold
+
+from util import Batcher
+from tf_ops import dnn, batch_normalize
+from graph_training_utils import ModelRunner
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-learnrate', type=float, default=0.001,
@@ -57,8 +57,6 @@ if not args.folder.endswith('/'):
     args.folder += '/'
 os.system('mkdir ' + args.folder)
 os.system('mkdir ' + args.folder + 'models/')
-tf.set_random_seed(args.random_seed)
-np.random.seed(args.random_seed)
 
 
 def get_scores(labels, pred):
@@ -69,15 +67,15 @@ def get_scores(labels, pred):
     accuracy = sklearn.metrics.accuracy_score(labels, plabels)
     return precision, recall, fscore, auc, accuracy
 
+
 with open('clean_jan_field_data.csv', 'r') as h:
     header = h.readline().strip().split(',')
 
 all_data = np.loadtxt('clean_jan_field_data.csv', skiprows=1, delimiter=',')
-np.random.shuffle(all_data)
 
 ecoreg = all_data[:, 5]
 cov_type = all_data[:, 4]
-split_labels = 100*cov_type + ecoreg  # This gives a unique int representation to each of 79 combinations
+split_labels = ecoreg  # This gives a unique int representation to each of 79 combinations
                                       # of cov_type and ecoreg found in data; used for representative distribution in
                                       # train/test cross-validation folds
 full_y = all_data[:, header.index('brte_cov')]
@@ -98,8 +96,8 @@ full_y, test_y = full_y[train], full_y[test]
 full_x, test_x = full_x[train], full_x[test]
 full_label, test_label = full_label[train], full_label[test]
 full_ids, test_ids = full_ids[train], full_ids[test]
-split_labels = split_labels[train]
-test_data = all_data[test]
+split_labels, test_split_labels = split_labels[train], split_labels[test]
+test_data, all_data = all_data[test], all_data[train]
 
 # Tensorflow graph
 x = tf.placeholder(tf.float32, [None, full_x.shape[1]])
@@ -135,7 +133,9 @@ model = ModelRunner(ce, ph_dict,
 
 # set up training
 scores, predictions, true_classes, point_ids = [], [], [], []
-folds = [(np.load('idxs/train_%s.npy' % i), np.load('idxs/test_%s.npy' %i)) for i in range(5)]
+# folds = [(np.load('idxs/train_%s.npy' % i), np.load('idxs/test_%s.npy' %i)) for i in range(5)]
+
+folds = StratifiedKFold(split_labels, n_folds=5)
 for i, (train, test) in enumerate(folds):
     performance_file = open(args.folder + str(i) + '_performance.csv', 'w')
     performance_file.write('train_loss train_precision, train_recall, train_fscore, train_auc, train_accuracy '
@@ -221,8 +221,6 @@ np.save(args.folder + 'predictions.npy',
                    np.concatenate(predictions)[:, 1]]).transpose())
 
 test_predictions, test_true_classes, test_point_ids = [], [], []
-
-
 for fold, (train, test) in enumerate(folds):
     mean, std = np.mean(full_x[train], axis=0), np.std(full_x[train], axis=0)
     test_datadict = {'x': (test_x - mean) / std, 'y': test_label}
@@ -246,7 +244,7 @@ np.save(args.folder + 'test_predictions.npy',
                    np.concatenate(test_predictions)[:, 1]]).transpose())
 print(scores)
 with open(args.logfile, 'a') as logfile:
-    logfile.write('%.5f,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n' % (args.learnrate,
+    logfile.write('%.5f,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n' % (args.learnrate,
                                                                                             args.mb,
                                                                                             args.max_epochs,
                                                                                             args.kp,
@@ -261,43 +259,11 @@ with open(args.logfile, 'a') as logfile:
                                                                                             final_fscore,
                                                                                             final_auc,
                                                                                             final_accuracy,
-                                                                                            test_prec
+                                                                                            test_precision,
+                                                                                            test_recall,
+                                                                                            test_fscore,
+                                                                                            test_auc,
+                                                                                            test_accuracy,
                                                                                             np.mean(scores),
                                                                                             np.std(scores) * 2))
 print np.mean(scores), np.std(scores)*2
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-print(scores)
-with open(args.logfile, 'a') as logfile:
-    logfile.write('%.5f,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n' % (args.learnrate,
-                                                                                            args.mb,
-                                                                                            args.max_epochs,
-                                                                                            args.kp,
-                                                                                            args.random_seed,
-                                                                                            args.layers[0],
-                                                                                            args.layers[1],
-                                                                                            args.layers[2],
-                                                                                            args.decay_rate,
-                                                                                            args.decay_steps,
-                                                                                            final_precision,
-                                                                                            final_recall,
-                                                                                            final_fscore,
-                                                                                            final_auc,
-                                                                                            final_accuracy,
-                                                                                            np.mean(scores),
-                                                                                            np.std(scores) * 2))
-print np.mean(scores), np.std(scores)*2
-

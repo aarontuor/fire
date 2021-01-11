@@ -10,7 +10,7 @@ for partition in ['d4', 'd3', 'd2', 'd1']:
     for i in range(200):
         os.system('mkdir %s/%s' % (partition, i))
         mb = random.choice([16, 32, 64, 128])
-        lr = random.uniform(0.00001, 0.03)
+        lr = random.uniform(0.0:d0001, 0.03)
         me = 100
         layers = (random.choice([128, 256, 512]),
                   random.choice([32, 64, 128, 256]),

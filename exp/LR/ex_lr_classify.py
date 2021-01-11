@@ -11,20 +11,20 @@ for partition in ['d4', 'd3', 'd2', 'd1']:
         os.system('mkdir %s/%s' % (partition, i))
         mb = random.choice([16, 32, 64, 128])
         lr = random.uniform(0.001, 0.03)
-        me = 100
-        layers = (random.choice([128, 256, 512]),
-                  random.choice([32, 64, 128, 256]),
-                  random.choice([64, 128, 256]))
-        dr = random.uniform(0.5, 1.0)
+        me = 50
+        dr = random.uniform(0.0, 1.0)
         ds = random.randint(20, 200)
-        kp = random.uniform(0.5, 1.0)
+        l2 = random.uniform(0.0, 0.1)
         rs = random.randint(5, 500)
-        os.system('python ../../classify_dnn.py ' +
+        reduce = random.randint(10, 400)
+        do_reduce = random.choice([0, 1])
+        reduce_val = ['', '-reduce %s ' % reduce][do_reduce]
+        os.system('python ../../classify_lr.py ' +
                   '-learnrate %s ' % lr +
                   '-mb %s ' % mb +
                   '-max_epochs %s ' % me +
-                  '-kp %s ' % kp +
-                  '-layers %s %s %s ' % layers +
+                  '-l2 %s ' % l2 +
+                  '%s' % reduce_val +
                   '-decay_rate %s ' % dr +
                   '-decay_steps %s ' % ds +
                   '-partition %s ' % partition +
